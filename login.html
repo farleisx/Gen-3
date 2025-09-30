@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login / Signup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; font-family:'Inter',sans-serif; background:#f3f4f6; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+  h1 { font-size:2rem; margin-bottom:1rem; }
+  input { margin:6px 0; padding:10px 12px; border-radius:6px; border:1px solid #d1d5db; width:240px; }
+  button { margin-top:12px; padding:10px 20px; border:none; border-radius:6px; background:#3b82f6; color:white; font-weight:600; cursor:pointer; transition:background 0.2s; }
+  button:hover { background:#2563eb; }
+  #toggle { margin-top:10px; font-size:0.9rem; color:#374151; cursor:pointer; }
+</style>
+</head>
+<body>
+<h1 id="formTitle">Login</h1>
+<input id="email" type="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button id="submitBtn">Submit</button>
+<div id="toggle">Don't have an account? <span id="switch">Signup</span></div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const supabaseUrl = "YOUR_SUPABASE_URL";
+const supabaseKey = "YOUR_SUPABASE_KEY";
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+let isLogin = true;
+const formTitle = document.getElementById("formTitle");
+const submitBtn = document.getElementById("submitBtn");
+const switchBtn = document.getElementById("switch");
+
+switchBtn.onclick = () => {
+  isLogin = !isLogin;
+  formTitle.textContent = isLogin ? "Login" : "Signup";
+  switchBtn.textContent = isLogin ? "Signup" : "Login";
+};
+
+submitBtn.onclick = async () => {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  if(!email || !password){ alert("Enter email and password"); return; }
+
+  let user;
+  if(isLogin){
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if(error){ alert(error.message); return; }
+    user = data.user;
+  } else {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if(error){ alert(error.message); return; }
+    user = data.user;
+  }
+
+  if(user){
+    localStorage.setItem("ai-user", user.id);
+    window.location.href="dashboard.html";
+  }
+};
+</script>
+</body>
+</html>
