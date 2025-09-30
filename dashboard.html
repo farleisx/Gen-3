@@ -56,4 +56,163 @@
 <iframe id="preview"></iframe>
 <div id="codeViewer">
   <div id="codeTabs"></div>
-  <pre id
+  <pre id="codeContent"></pre>
+</div>
+
+<div class="chat-input">
+  <input id="ai-chat-input" placeholder="Tell AI to change something...">
+  <button id="ai-chat-send">Send</button>
+</div>
+
+<div id="renameModal">
+  <div class="modal-content">
+    <input id="renameInput" placeholder="Enter new project name">
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button id="renameConfirm">Confirm</button>
+      <button id="renameCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const user = localStorage.getItem("ai-user");
+const prompt = localStorage.getItem("ai-prompt") || "My first AI project";
+if(!user) window.location.href="login.html";
+
+const projectNameEl = document.getElementById("projectName");
+let storedName = localStorage.getItem("ai-project-name") || prompt.substring(0,20);
+projectNameEl.textContent = storedName;
+
+const creditsDisplay = document.getElementById("creditsDisplay");
+let codeData = {};
+
+const successAudio = new Audio("success-340660.mp3");
+function playSuccess(){ try{ successAudio.currentTime=0; successAudio.play(); }catch(e){console.error(e);} }
+
+function startProgressBar(){
+  const container=document.getElementById("progress-container");
+  const bar=document.getElementById("progress-bar");
+  container.style.display="block";
+  bar.style.width="0%";
+  let progress=0;
+  const interval=setInterval(()=>{ if(progress<95){ progress+=5; bar.style.width=progress+"%"; } },500);
+  return { intervalId: interval, finish: ()=>{
+    clearInterval(interval);
+    let current=parseFloat(bar.style.width);
+    const anim=setInterval(()=>{
+      if(current<100){ current+=1; bar.style.width=current+"%"; }
+      else{ clearInterval(anim); successAudio.play(); setTimeout(()=>{ container.style.display="none"; bar.style.width="0%"; },500); }
+    },10);
+  }};
+}
+
+async function fetchCredits(){
+  try{
+    const res=await fetch("/api/ai-generate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ userId:user, prompt, costCheckOnly:true })
+    });
+    const data=await res.json();
+    creditsDisplay.textContent = `Credits: ${data.creditsLeft}/5`;
+    return data.creditsLeft;
+  }catch(err){ console.error(err); return 0; }
+}
+
+async function generateSite(){
+  const credits = await fetchCredits();
+  if(credits < 0.5) { alert("Not enough credits"); return; }
+  const progress = startProgressBar();
+  try{
+    const res = await fetch("/api/ai-generate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ userId:user, prompt })
+    });
+    const data = await res.json();
+    creditsDisplay.textContent = `Credits: ${data.creditsLeft}/5`;
+
+    const regex=/```(\w+)[\s\S]*?```/gi;
+    let match; codeData={};
+    while((match=regex.exec(data.output))!==null){
+      let lang=match[1].trim();
+      codeData[lang]=match[0].replace(/```/g,'').trim();
+    }
+    showPreview();
+    progress.finish();
+  }catch(err){ console.error(err); progress.finish(); alert("Failed to generate website."); }
+}
+
+function showPreview(){
+  document.getElementById("preview").style.display="block";
+  document.getElementById("codeViewer").style.display="none";
+  const iframe=document.getElementById("preview");
+  const doc=iframe.contentDocument||iframe.contentWindow.document;
+  doc.open();
+  if(codeData.html) doc.write(codeData.html);
+  doc.close();
+}
+
+function showCode(){
+  document.getElementById("preview").style.display="none";
+  document.getElementById("codeViewer").style.display="flex";
+  const tabsEl=document.getElementById("codeTabs");
+  tabsEl.innerHTML="";
+  Object.keys(codeData).forEach(lang=>{
+    const btn=document.createElement("button");
+    btn.textContent=lang.toUpperCase();
+    btn.onclick=()=>{ switchTab(lang); };
+    tabsEl.appendChild(btn);
+  });
+  const firstLang=Object.keys(codeData)[0];
+  if(firstLang) switchTab(firstLang);
+}
+
+function switchTab(lang){
+  document.querySelectorAll("#codeTabs button").forEach(btn=>{ btn.classList.remove("active"); if(btn.textContent.toLowerCase()===lang) btn.classList.add("active"); });
+  document.getElementById("codeContent").textContent=codeData[lang]||"";
+}
+
+document.getElementById("ai-chat-send").addEventListener("click", async ()=>{
+  const instruction = document.getElementById("ai-chat-input").value.trim();
+  if(!instruction) return;
+  const credits = await fetchCredits();
+  if(credits < 0.25){ alert("Not enough credits"); return; }
+  const progress = startProgressBar();
+  try{
+    const res = await fetch("/api/ai-generate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ userId:user, prompt, previousCode:Object.values(codeData).join("\n"), instruction })
+    });
+    const data = await res.json();
+    creditsDisplay.textContent = `Credits: ${data.creditsLeft}/5`;
+    const regex=/```(\w+)[\s\S]*?```/gi;
+    let match; codeData={};
+    while((match=regex.exec(data.output))!==null){
+      let lang=match[1].trim();
+      codeData[lang]=match[0].replace(/```/g,'').trim();
+    }
+    showPreview();
+    progress.finish();
+  }catch(err){ console.error(err); progress.finish(); alert("Failed to update site."); }
+});
+
+document.getElementById("regenBtn").onclick=generateSite;
+document.getElementById("backBtn").onclick=()=>window.location.href="index.html";
+document.getElementById("codeBtn").onclick=showCode;
+document.getElementById("previewBtn").onclick=showPreview;
+
+// Rename modal
+const renameModal=document.getElementById("renameModal");
+const renameInput=document.getElementById("renameInput");
+document.getElementById("renameBtn").onclick=()=>{ renameInput.value=projectNameEl.textContent; renameModal.style.display="flex"; };
+document.getElementById("renameConfirm").onclick=()=>{ const newName=renameInput.value.trim(); if(newName){ projectNameEl.textContent=newName; localStorage.setItem("ai-project-name", newName); renameModal.style.display="none"; } };
+document.getElementById("renameCancel").onclick=()=> renameModal.style.display="none";
+
+// Initial load
+generateSite();
+</script>
+
+</body>
+</html>
